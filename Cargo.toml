@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "zktls-core",
+    "zktls-notary",
+    "zktls-verifier",
+    "zktls-templates",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/PlausiDen/sacredvote-zktls"

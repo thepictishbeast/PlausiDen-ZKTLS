@@ -1,0 +1,12 @@
+[package]
+name = "zktls-templates"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Template definitions for zkTLS verification targets: government identity portals, registrar sites, and other claim sources."
+
+[dependencies]
+zktls-core = { path = "../zktls-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

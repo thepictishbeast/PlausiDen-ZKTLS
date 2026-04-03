@@ -1,0 +1,24 @@
+# Build artifacts
+/target/
+**/target/
+
+# Cargo.lock is checked in for applications but not libraries.
+# This workspace is a library collection, so exclude it.
+Cargo.lock
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
