@@ -1,4 +1,4 @@
-# sacredvote-zktls — zkTLS identity verification toolkit
+# plausiden-zktls — general-purpose zkTLS identity verification toolkit
 
 # Run all tests
 test:

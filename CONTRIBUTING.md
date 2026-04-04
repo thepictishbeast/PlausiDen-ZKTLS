@@ -1,6 +1,6 @@
-# Contributing to sacredvote-zktls
+# Contributing to plausiden-zktls
 
-Thank you for your interest in contributing to sacredvote-zktls. This toolkit is a public good and contributions from the community make it stronger.
+Thank you for your interest in contributing to plausiden-zktls. This toolkit is a general-purpose public good and contributions from the community make it stronger.
 
 ## Development Environment
 
@@ -13,8 +13,8 @@ Thank you for your interest in contributing to sacredvote-zktls. This toolkit is
 ### Getting Started
 
 ```bash
-git clone https://github.com/PlausiDen/sacredvote-zktls.git
-cd sacredvote-zktls
+git clone https://github.com/PlausiDen/plausiden-zktls.git
+cd plausiden-zktls
 
 # Build everything
 just build
@@ -29,7 +29,7 @@ just check-all
 ### Project Structure
 
 ```
-sacredvote-zktls/
+plausiden-zktls/
   zktls-core/         Core types (no I/O, no crypto ops)
   zktls-notary/       Notary service
   zktls-verifier/     Proof verification
@@ -105,4 +105,4 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 
 ## License
 
-By contributing to sacredvote-zktls, you agree that your contributions will be licensed under the Apache License, Version 2.0.
+By contributing to plausiden-zktls, you agree that your contributions will be licensed under the Apache License, Version 2.0.

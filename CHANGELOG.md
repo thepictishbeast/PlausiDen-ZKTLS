@@ -17,3 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full test suite for all crate types.
 - CI pipeline with fmt, clippy, test, build, and audit.
 - Repository documentation: README, ARCHITECTURE, CONTRIBUTING, SECURITY, CHANGELOG.
+
+### Changed
+- Renamed repository from sacredvote-zktls to plausiden-zktls to reflect its role as a general-purpose zkTLS library.

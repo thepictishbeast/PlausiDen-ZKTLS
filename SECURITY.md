@@ -2,7 +2,7 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability in sacredvote-zktls, please report it responsibly.
+If you discover a security vulnerability in plausiden-zktls, please report it responsibly.
 
 **Email:** security@sacredvote.org
 

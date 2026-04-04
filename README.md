@@ -1,43 +1,43 @@
-# sacredvote-zktls
+# plausiden-zktls
 
-[![CI](https://github.com/PlausiDen/sacredvote-zktls/actions/workflows/ci.yml/badge.svg)](https://github.com/PlausiDen/sacredvote-zktls/actions/workflows/ci.yml)
+[![CI](https://github.com/PlausiDen/plausiden-zktls/actions/workflows/ci.yml/badge.svg)](https://github.com/PlausiDen/plausiden-zktls/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Prove who you are without revealing who you are. sacredvote-zktls is a toolkit that lets people verify real-world identity claims -- like voter registration status -- using cryptographic proofs from TLS sessions, without exposing any personal data to the verifier. It turns the trust model of identity verification inside out: instead of handing your information to a central authority and hoping they protect it, you prove your claim mathematically and keep your data to yourself.
+Prove who you are without revealing who you are. plausiden-zktls is a general-purpose toolkit that lets applications verify real-world identity claims -- like voter registration, age, professional credentials, or academic records -- using cryptographic proofs from TLS sessions, without exposing any personal data to the verifier. It turns the trust model of identity verification inside out: instead of handing your information to a central authority and hoping they protect it, you prove your claim mathematically and keep your data to yourself.
 
 ## The Problem
 
-Current identity verification systems require you to trust a central authority with your personal data. When a voting platform needs to confirm you are a registered voter, the conventional approach is to query a government database directly, creating a surveillance link between your identity and your ballot. Even "privacy-preserving" approaches typically involve a trusted intermediary that sees everything. This is a civil rights problem: the act of verifying your eligibility should not create a record that can be used to track how you vote, or that you voted at all.
+Current identity verification systems require you to trust a central authority with your personal data. When any application needs to confirm a real-world claim about a person, the conventional approach is to query a database directly, creating a surveillance link between the person's identity and the service they are using. Even "privacy-preserving" approaches typically involve a trusted intermediary that sees everything. This is a civil rights problem: the act of verifying a claim should not create a record that can be used for tracking or surveillance.
 
-Journalists verifying sources, activists confirming credentials, and ordinary voters participating in democracy all face the same dilemma: prove a claim about yourself, or maintain your privacy. You should not have to choose.
+Journalists verifying sources, activists confirming credentials, voters participating in democracy, and ordinary people proving their age or qualifications all face the same dilemma: prove a claim about yourself, or maintain your privacy. You should not have to choose.
 
 ## How It Works
 
-zkTLS (zero-knowledge TLS) uses a cryptographic notary to co-sign a TLS session between your browser and a target website. The notary attests that the session really happened and that the server's response is authentic, without needing to see the full plaintext. You then apply selective disclosure to reveal only the specific fields needed (e.g., "registration status: active") while cryptographically redacting everything else (name, address, date of birth).
+zkTLS (zero-knowledge TLS) uses a cryptographic notary to co-sign a TLS session between the user's browser and a target website. The notary attests that the session really happened and that the server's response is authentic, without needing to see the full plaintext. The user then applies selective disclosure to reveal only the specific fields needed (e.g., "registration status: active") while cryptographically redacting everything else (name, address, date of birth).
 
 ```text
-  You                       Notary                    Government Site
+  User                      Notary                    Target Site
    |                          |                              |
    |-- start notarization --->|                              |
    |                          |                              |
    |<========= co-signed TLS handshake ===================>|
    |                          |                              |
-   |-- "am I registered?" --->|------- forward request ----->|
+   |-- "verify my claim" ---->|------- forward request ----->|
    |                          |                              |
    |<-- attested response ----|<------ response -------------|
    |                          |                              |
    |== apply disclosure mask ==|                              |
-   |   (reveal: status=Active) |                              |
+   |   (reveal: claim=valid)   |                              |
    |   (redact: name, address) |                              |
    |                          |                              |
    |-- submit proof to ------>  Verifier                     |
-   |   voting platform        |                              |
+   |   relying party          |                              |
    |                          |                              |
    |   Verifier checks:                                      |
    |   1. Notary signature valid                             |
    |   2. Template matches expected format                   |
    |   3. Disclosed fields pass validation                   |
-   |   Result: "voter is registered" (nothing else learned)  |
+   |   Result: "claim is valid" (nothing else learned)       |
 ```
 
 The verifier learns exactly one fact -- the claim is valid -- and nothing more.
@@ -55,8 +55,8 @@ The verifier learns exactly one fact -- the claim is valid -- and nothing more.
 
 ```bash
 # Clone the repository
-git clone https://github.com/PlausiDen/sacredvote-zktls.git
-cd sacredvote-zktls
+git clone https://github.com/PlausiDen/plausiden-zktls.git
+cd plausiden-zktls
 
 # Build the workspace
 cargo build
@@ -73,7 +73,7 @@ Requires Rust 1.75+ and [Just](https://github.com/casey/just) for the command ru
 ## Workspace Structure
 
 ```
-sacredvote-zktls/
+plausiden-zktls/
   zktls-core/         Core types: session proofs, attestations, disclosure masks
   zktls-notary/       Notary service for co-signing TLS sessions
   zktls-verifier/     Proof verification against templates and trust stores
@@ -82,11 +82,11 @@ sacredvote-zktls/
 
 ## The PlausiDen Ecosystem
 
-sacredvote-zktls is part of the [Sacred.Vote](https://sacred.vote) civic technology platform, which provides zero-trust cryptographic polling where voter identity is mathematically decoupled from ballot records. While built for Sacred.Vote's voter verification flow, this toolkit is a standalone public good: any application that needs to verify real-world identity claims without centralized data collection can use it.
+plausiden-zktls is a standalone general-purpose library in the [PlausiDen](https://github.com/PlausiDen) ecosystem. It is used by [sacredvote-zktls](https://github.com/PlausiDen/sacredvote-zktls) to power voter registration verification on the [Sacred.Vote](https://sacred.vote) civic technology platform, but the toolkit itself is application-agnostic. Any project that needs to verify real-world identity claims without centralized data collection can use it: age verification, professional licensing, academic credentials, and more.
 
 Related repositories:
+- [sacredvote-zktls](https://github.com/PlausiDen/sacredvote-zktls) -- Sacred.Vote voter verification integration
 - [Sacred.Vote](https://github.com/PlausiDen/Sacred.Vote) -- The voting platform
-- [sacredvote-gatekeeper](https://github.com/PlausiDen/sacredvote-gatekeeper) -- Access control and session management
 - [plausiden-crdt](https://github.com/PlausiDen/plausiden-crdt) -- Conflict-free replicated data types
 
 ## License
