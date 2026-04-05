@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 description = "Notary service that co-signs TLS sessions, enabling third-party attestation of web interactions without proxying traffic."
 
+[[bin]]
+name = "zktls-notary"
+path = "src/main.rs"
+
 [dependencies]
 zktls-core = { path = "../zktls-core" }
 zktls-templates = { path = "../zktls-templates" }
@@ -37,6 +41,7 @@ thiserror = "2"
 
 # Observability
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Timestamps
 chrono = { version = "0.4", features = ["serde"] }
