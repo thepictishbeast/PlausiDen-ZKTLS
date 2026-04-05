@@ -8,7 +8,46 @@ description = "Notary service that co-signs TLS sessions, enabling third-party a
 
 [dependencies]
 zktls-core = { path = "../zktls-core" }
+zktls-templates = { path = "../zktls-templates" }
+
+# Async runtime
 tokio = { version = "1", features = ["full"] }
+
+# HTTP server
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# HTTP client for fetching target servers
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Cryptography — Ed25519 signatures
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+
+# TLS
 rustls = "0.23"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
 anyhow = "1"
+thiserror = "2"
+
+# Observability
 tracing = "0.1"
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID for session IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Hex encoding for public keys
+hex = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
