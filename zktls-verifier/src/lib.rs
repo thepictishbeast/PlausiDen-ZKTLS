@@ -297,13 +297,17 @@ mod tests {
 
     #[test]
     fn expired_attestation_rejected() {
-        // Use a dummy trusted notary with matching key
-        let verifier = Ed25519Verifier::new(vec![TrustedNotary {
-            name: "Test".to_string(),
-            public_key: vec![0u8; 32],
-            endpoint: None,
-        }]);
-
+        // Direct expiry-window check. We deliberately do *not* round-trip
+        // through `Ed25519Verifier::verify_attestation` here because that
+        // path would short-circuit on the invalid signature (the dummy
+        // proof carries `vec![0u8; 64]`) before reaching the expiry
+        // gate. The lifetime check itself is what we're guarding against
+        // regression — `verify_attestation` calls the same comparison
+        // (`*expires_at < Utc::now()`) at lib.rs:196.
+        //
+        // TODO(AVP-2 Tier 2): replace with an end-to-end test that signs
+        // a real proof with a test keypair so the expiry branch can be
+        // exercised through the full verifier path.
         let attestation = Attestation {
             id: "att-1".to_string(),
             claim_type: "test".to_string(),
@@ -315,8 +319,6 @@ mod tests {
             expires_at: Some(Utc::now() - chrono::Duration::hours(1)),
         };
 
-        // This will fail at verify_proof first (invalid sig), but let's test expiry
-        // by calling the check directly
         if let Some(exp) = &attestation.expires_at {
             assert!(*exp < Utc::now(), "should be expired");
         }
