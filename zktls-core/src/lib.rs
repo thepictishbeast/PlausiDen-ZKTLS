@@ -14,6 +14,8 @@
 //! All types are serializable and designed for transport across network boundaries.
 //! No cryptographic operations are performed here; this crate is purely structural.
 
+#![forbid(unsafe_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};

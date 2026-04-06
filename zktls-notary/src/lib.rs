@@ -42,6 +42,8 @@
 //! Future versions will implement MPC-TLS where the notary co-signs without
 //! seeing the full plaintext.
 
+#![forbid(unsafe_code)]
+
 pub mod error;
 pub mod keys;
 pub mod server;

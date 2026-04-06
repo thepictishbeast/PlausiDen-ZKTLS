@@ -27,6 +27,8 @@
 //! - Extraction: JSON fields `voterStatus`, `county`, `party`
 //! - Default disclosure: `voterStatus` only (minimal proof of registration)
 
+#![forbid(unsafe_code)]
+
 use serde::{Deserialize, Serialize};
 use zktls_core::DisclosureMask;
 

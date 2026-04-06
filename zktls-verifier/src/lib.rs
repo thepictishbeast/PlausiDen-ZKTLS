@@ -17,6 +17,8 @@
 //! The verifier never sees redacted data. It only confirms that the disclosed
 //! fields are consistent with the proof and that the proof is properly signed.
 
+#![forbid(unsafe_code)]
+
 use chrono::Utc;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};

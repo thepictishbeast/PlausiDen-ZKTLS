@@ -4,6 +4,8 @@
 //! or command-line arguments. The notary generates and persists its Ed25519
 //! signing key, loads verification templates, and serves the /notarize API.
 
+#![forbid(unsafe_code)]
+
 use std::path::PathBuf;
 use tokio::net::TcpListener;
 use tracing::{info, warn};
