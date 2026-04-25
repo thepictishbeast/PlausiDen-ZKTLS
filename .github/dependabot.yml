@@ -1,0 +1,35 @@
+# Dependabot config — library-crate convention.
+#
+# This repo has multiple Cargo manifests (zktls-core, zktls-notary, etc.)
+# and does NOT commit Cargo.lock (per library convention). Major-version
+# updates require manual code work, so we restrict Dependabot to minor
+# + patch bumps only. Major-version bumps stay as manual issues.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: "/zktls-core"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: cargo
+    directory: "/zktls-notary"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
