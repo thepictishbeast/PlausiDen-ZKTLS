@@ -297,19 +297,59 @@ mod tests {
         assert!(matches!(err, VerificationError::UntrustedNotary(_)));
     }
 
+    /// Build a real signed `SessionProof` with the provided signing key,
+    /// using the same byte layout as `zktls_notary::session::build_signing_message`.
+    /// Test-only helper: lets us drive the full verifier path through real
+    /// cryptography rather than mocking the signature gate.
+    fn signed_proof(
+        signing_key: &ed25519_dalek::SigningKey,
+        hostname: &str,
+    ) -> SessionProof {
+        use ed25519_dalek::Signer;
+
+        let cert_hash = vec![0xAB; 64];
+        let transcript_commitment = vec![0xCD; 64];
+        let session_timestamp = Utc::now();
+
+        let signing_message = build_signing_message(
+            hostname,
+            &cert_hash,
+            &transcript_commitment,
+            &session_timestamp,
+        );
+        let signature = signing_key.sign(&signing_message);
+
+        SessionProof {
+            server_hostname: hostname.to_string(),
+            certificate_hash: cert_hash,
+            transcript_commitment,
+            notary_signature: signature.to_bytes().to_vec(),
+            notary_public_key: signing_key.verifying_key().to_bytes().to_vec(),
+            session_timestamp,
+            proof_timestamp: session_timestamp,
+        }
+    }
+
     #[test]
     fn expired_attestation_rejected() {
-        // Direct expiry-window check. We deliberately do *not* round-trip
-        // through `Ed25519Verifier::verify_attestation` here because that
-        // path would short-circuit on the invalid signature (the dummy
-        // proof carries `vec![0u8; 64]`) before reaching the expiry
-        // gate. The lifetime check itself is what we're guarding against
-        // regression — `verify_attestation` calls the same comparison
-        // (`*expires_at < Utc::now()`) at lib.rs:196.
-        //
-        // TODO(AVP-2 Tier 2): replace with an end-to-end test that signs
-        // a real proof with a test keypair so the expiry branch can be
-        // exercised through the full verifier path.
+        // End-to-end through `verify_attestation`: the proof carries a real
+        // notary signature so the signature gate passes, the trust-store gate
+        // passes, and execution reaches the expiry comparison. That is the
+        // gate this test guards against regression.
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let public_key = signing_key.verifying_key().to_bytes().to_vec();
+
+        let verifier = Ed25519Verifier::new(vec![TrustedNotary {
+            name: "Test Notary".to_string(),
+            public_key,
+            endpoint: None,
+        }]);
+
+        let proof = signed_proof(&signing_key, "id.utah.gov");
+
         let attestation = Attestation {
             id: "att-1".to_string(),
             claim_type: "test".to_string(),
@@ -317,12 +357,90 @@ mod tests {
             disclosed_fields: std::collections::HashMap::new(),
             redacted_field_hashes: vec![],
             template_id: "t-1".to_string(),
-            created_at: Utc::now(),
+            created_at: Utc::now() - chrono::Duration::hours(2),
             expires_at: Some(Utc::now() - chrono::Duration::hours(1)),
         };
 
-        if let Some(exp) = &attestation.expires_at {
-            assert!(*exp < Utc::now(), "should be expired");
-        }
+        let err = verifier
+            .verify_attestation(&attestation, &proof)
+            .expect_err("expired attestation must be rejected");
+        assert!(
+            matches!(err, VerificationError::Expired(_)),
+            "expected Expired, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn unexpired_attestation_accepted() {
+        // Companion to `expired_attestation_rejected`: with `expires_at`
+        // in the future, the same code path returns a `VerificationResult`.
+        // Forces both branches of the expiry gate to be exercised by tests.
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let public_key = signing_key.verifying_key().to_bytes().to_vec();
+
+        let verifier = Ed25519Verifier::new(vec![TrustedNotary {
+            name: "Test Notary".to_string(),
+            public_key,
+            endpoint: None,
+        }]);
+
+        let proof = signed_proof(&signing_key, "id.utah.gov");
+
+        let attestation = Attestation {
+            id: "att-2".to_string(),
+            claim_type: "voter_registration".to_string(),
+            session_proof_id: "p-2".to_string(),
+            disclosed_fields: std::collections::HashMap::new(),
+            redacted_field_hashes: vec![],
+            template_id: "t-1".to_string(),
+            created_at: Utc::now(),
+            expires_at: Some(Utc::now() + chrono::Duration::hours(1)),
+        };
+
+        let result = verifier
+            .verify_attestation(&attestation, &proof)
+            .expect("unexpired attestation must verify");
+        assert!(result.valid);
+        assert_eq!(result.claim_type, "voter_registration");
+    }
+
+    #[test]
+    fn forged_signature_rejected() {
+        // A proof carrying a signature from a different (still trusted) key
+        // must fail the signature gate — guards against an attacker swapping
+        // signature bytes between two trusted notaries' proofs.
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+
+        let key_a = SigningKey::generate(&mut OsRng);
+        let key_b = SigningKey::generate(&mut OsRng);
+
+        let verifier = Ed25519Verifier::new(vec![
+            TrustedNotary {
+                name: "Notary A".to_string(),
+                public_key: key_a.verifying_key().to_bytes().to_vec(),
+                endpoint: None,
+            },
+            TrustedNotary {
+                name: "Notary B".to_string(),
+                public_key: key_b.verifying_key().to_bytes().to_vec(),
+                endpoint: None,
+            },
+        ]);
+
+        // Build a proof claiming to be from key_a but signed by key_b.
+        let mut proof = signed_proof(&key_b, "id.utah.gov");
+        proof.notary_public_key = key_a.verifying_key().to_bytes().to_vec();
+
+        let err = verifier
+            .verify_proof(&proof)
+            .expect_err("mismatched key/signature must be rejected");
+        assert!(
+            matches!(err, VerificationError::InvalidSignature),
+            "expected InvalidSignature, got {err:?}",
+        );
     }
 }
