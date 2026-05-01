@@ -53,7 +53,7 @@ uuid = { version = "1", features = ["v4"] }
 hex = "0.4"
 
 # Template loading from TOML config files
-toml = "0.8"
+toml = "1.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
