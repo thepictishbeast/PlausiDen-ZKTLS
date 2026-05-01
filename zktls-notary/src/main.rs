@@ -12,7 +12,8 @@ use tracing::{info, warn};
 use zktls_core::DisclosureMask;
 use zktls_notary::{NotaryConfig, NotaryKeyPair, NotaryServer};
 use zktls_templates::{
-    FieldDefinition, FieldType, HttpMethod, TargetServer, TemplateRegistry, VerificationTemplate,
+    CsrfConfig, FieldDefinition, FieldType, HttpMethod, TargetServer, TemplateRegistry,
+    VerificationTemplate,
 };
 
 /// Load or generate the notary's Ed25519 key pair.
@@ -64,6 +65,14 @@ fn utah_voter_template() -> VerificationTemplate {
             path: "/voter-search/public-api/my-voter-profile".to_string(),
             method: HttpMethod::Post,
             expected_content_type: "application/json".to_string(),
+            csrf: Some(CsrfConfig {
+                fetch_path: "/voter-search/search/search-by-voter/voter-info".to_string(),
+                cookie_name: "XSRF-TOKEN".to_string(),
+                header_name: "X-XSRF-TOKEN".to_string(),
+            }),
+            referer_path: Some(
+                "/voter-search/search/search-by-voter/voter-info".to_string(),
+            ),
         },
         fields: vec![
             FieldDefinition {
@@ -144,16 +153,46 @@ async fn main() {
     let public_key_hex = hex::encode(keypair.public_key_bytes());
     info!(public_key = %public_key_hex, "notary public key");
 
-    // Build template registry
+    // Build template registry — hardcoded Utah + any TOML files from config dir
     let mut templates = TemplateRegistry::new();
     templates.register(utah_voter_template());
+
+    // Load additional state templates from TOML files in config directory
+    let template_dir = std::env::var("NOTARY_TEMPLATE_DIR")
+        .unwrap_or_else(|_| "/etc/zktls-notary/templates".to_string());
+    if let Ok(entries) = std::fs::read_dir(&template_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "toml") {
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|contents| toml::from_str::<VerificationTemplate>(&contents).map_err(|e| e.to_string()))
+                {
+                    Ok(tpl) => {
+                        info!(template = %tpl.id, path = %path.display(), "loaded template from file");
+                        templates.register(tpl);
+                    }
+                    Err(e) => {
+                        warn!(path = %path.display(), error = %e, "failed to load template file");
+                    }
+                }
+            }
+        }
+    }
     info!(templates = templates.list_ids().len(), "loaded templates");
 
-    // Build config
+    // Build config — allowed hostnames derived from registered templates
+    let allowed_hostnames: Vec<String> = templates
+        .list_ids()
+        .iter()
+        .filter_map(|id| templates.get(id).map(|t| t.target.hostname.clone()))
+        .collect();
+    info!(allowed = ?allowed_hostnames, "hostname allowlist (from templates)");
+
     let config = NotaryConfig {
         max_concurrent_sessions: max_sessions,
         session_timeout_secs: 300,
-        allowed_hostnames: vec!["votesearch.utah.gov".to_string()],
+        allowed_hostnames,
         listen_addr: listen_addr.clone(),
     };
 

@@ -74,9 +74,12 @@ impl NotaryServer {
         keypair: NotaryKeyPair,
         templates: TemplateRegistry,
     ) -> Self {
+        // Build HTTP client with browser-like TLS fingerprint.
+        // Cookie store enabled for CSRF token flows (Utah requires XSRF-TOKEN cookie).
+        // User-Agent rotated per-request in the handler, not set here.
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .user_agent("PlausiDen-zkTLS-Notary/0.1")
+            .cookie_store(true)
             .build()
             .expect("failed to build HTTP client");
 
@@ -99,6 +102,23 @@ impl NotaryServer {
             .route("/notarize", post(notarize))
             .route("/session/{id}", get(get_session))
             .with_state(self.state.clone())
+    }
+
+    /// Rotate the User-Agent to a realistic browser string.
+    /// Called periodically to avoid fingerprinting by target servers.
+    fn browser_user_agent() -> &'static str {
+        // Realistic browser UAs — rotated per-request to avoid profiling
+        const USER_AGENTS: &[&str] = &[
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        ];
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static INDEX: AtomicUsize = AtomicUsize::new(0);
+        let idx = INDEX.fetch_add(1, Ordering::Relaxed) % USER_AGENTS.len();
+        USER_AGENTS[idx]
     }
 
     /// Get the configured listen address.
@@ -242,7 +262,7 @@ async fn notarize(
         "starting notarization"
     );
 
-    // 3. Fetch the target URL
+    // 3. Fetch the target URL with anti-fingerprinting measures
     state
         .sessions
         .update_state(&session_id, SessionState::Fetching)
@@ -253,18 +273,162 @@ async fn notarize(
         "https://{}{}",
         template.target.hostname, template.target.path
     );
+    let ua = NotaryServer::browser_user_agent();
 
+    // Anti-fingerprinting: random 1-5s jitter before hitting target
+    let jitter_ms = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        session_id.hash(&mut h);
+        (h.finish() % 4000 + 1000) as u64 // 1000-5000ms
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
+
+    // Build a fresh HTTP client for THIS notarization. Sharing state.http_client
+    // across requests causes cookie-jar pollution: the second call's CSRF GET
+    // sees stale XSRF-TOKEN/F5-affinity cookies from the previous run, the gov
+    // portal serves a session-already-active response without setting fresh
+    // cookies, and the POST then 404s. A per-request client guarantees a clean
+    // jar (Tim demo 2026-04-27).
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .cookie_store(true)
+        .build()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("failed to build http client: {e}"),
+                }),
+            )
+        })?;
+
+    // Step A: Acquire CSRF token if the template declares a CSRF config.
+    // This is generic — works for Spring Security (XSRF-TOKEN), Django, etc.
+    let mut csrf_token: Option<(String, String)> = None; // (header_name, token_value)
+    if let Some(ref csrf_cfg) = template.target.csrf {
+        let csrf_url = format!(
+            "https://{}{}",
+            template.target.hostname, csrf_cfg.fetch_path
+        );
+        let csrf_res = http_client
+            .get(&csrf_url)
+            .header("User-Agent", ua)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("DNT", "1")
+            .header("Connection", "keep-alive")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
+            .header("Upgrade-Insecure-Requests", "1")
+            .send()
+            .await;
+
+        match csrf_res {
+            Ok(csrf_response) => {
+                let csrf_status = csrf_response.status();
+                let cookie_count = csrf_response.headers().get_all("set-cookie").iter().count();
+                let cookie_prefix = format!("{}=", csrf_cfg.cookie_name);
+                for cookie_str in csrf_response.headers().get_all("set-cookie") {
+                    if let Ok(val) = cookie_str.to_str() {
+                        if val.starts_with(&cookie_prefix) {
+                            let token = val[cookie_prefix.len()..]
+                                .split(';')
+                                .next()
+                                .unwrap_or("");
+                            if !token.is_empty() {
+                                csrf_token = Some((
+                                    csrf_cfg.header_name.clone(),
+                                    token.to_string(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                info!(
+                    session_id = %session_id,
+                    csrf_status = %csrf_status,
+                    set_cookie_headers = cookie_count,
+                    csrf_token_extracted = csrf_token.is_some(),
+                    "csrf fetch complete"
+                );
+            }
+            Err(e) => {
+                error!(session_id = %session_id, "csrf fetch failed: {}", e);
+            }
+        }
+
+        // Brief pause between CSRF fetch and actual request (human-like)
+        tokio::time::sleep(std::time::Duration::from_millis(500 + jitter_ms % 1500)).await;
+    }
+
+    // Step B: Make the actual request with browser-like headers
     let response = match template.target.method {
-        zktls_templates::HttpMethod::Get => state.http_client.get(&url).send().await,
-        zktls_templates::HttpMethod::Post => {
-            let body = req.request_body.unwrap_or(serde_json::Value::Null);
-            state
-                .http_client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .json(&body)
+        zktls_templates::HttpMethod::Get => {
+            http_client
+                .get(&url)
+                .header("User-Agent", ua)
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Accept-Encoding", "gzip, deflate, br")
+                .header("DNT", "1")
+                .header("Connection", "keep-alive")
+                .header("Sec-Fetch-Dest", "empty")
+                .header("Sec-Fetch-Mode", "cors")
+                .header("Sec-Fetch-Site", "same-origin")
                 .send()
                 .await
+        }
+        zktls_templates::HttpMethod::Post => {
+            let body = req.request_body.unwrap_or(serde_json::Value::Null);
+            let referer = template
+                .target
+                .referer_path
+                .as_deref()
+                .map(|p| format!("https://{}{}", template.target.hostname, p))
+                .unwrap_or_else(|| format!("https://{}/", template.target.hostname));
+
+            // Derive sec-ch-ua from selected UA to keep headers consistent
+            let (ch_ua, ch_platform) = if ua.contains("Chrome/131") {
+                ("\"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\", \"Google Chrome\";v=\"131\"", if ua.contains("Windows") { "\"Windows\"" } else if ua.contains("Macintosh") { "\"macOS\"" } else { "\"Linux\"" })
+            } else if ua.contains("Firefox") {
+                ("\"Firefox\";v=\"133\"", if ua.contains("Windows") { "\"Windows\"" } else { "\"Linux\"" })
+            } else {
+                ("\"Safari\";v=\"18\"", "\"macOS\"")
+            };
+
+            let mut req_builder = http_client
+                .post(&url)
+                .header("User-Agent", ua)
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Accept-Encoding", "gzip, deflate, br")
+                .header(
+                    "Origin",
+                    format!("https://{}", template.target.hostname),
+                )
+                .header("Referer", referer)
+                .header("DNT", "1")
+                .header("Connection", "keep-alive")
+                // Sec-Fetch metadata — tells the server this is a same-origin XHR
+                .header("Sec-Fetch-Dest", "empty")
+                .header("Sec-Fetch-Mode", "cors")
+                .header("Sec-Fetch-Site", "same-origin")
+                // Client hints — Chrome sends these on every request
+                .header("sec-ch-ua", ch_ua)
+                .header("sec-ch-ua-mobile", "?0")
+                .header("sec-ch-ua-platform", ch_platform);
+
+            // Attach CSRF token if acquired (generic — header name from template)
+            if let Some((ref header_name, ref token_value)) = csrf_token {
+                req_builder = req_builder.header(header_name.as_str(), token_value.as_str());
+            }
+
+            req_builder.json(&body).send().await
         }
     };
 
@@ -280,12 +444,19 @@ async fn notarize(
 
     let status = response.status();
     if !status.is_success() {
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "(no body)".to_string());
-        let msg = format!("target returned HTTP {}: {}", status.as_u16(), &body[..body.len().min(200)]);
+        // Do NOT log the response body — it may contain PII from the gov portal.
+        // Only log the HTTP status code, URL, body byte length, and template info.
+        let resp_url = response.url().to_string();
+        let resp_bytes = response.bytes().await.map(|b| b.len()).unwrap_or(0);
+        let msg = format!(
+            "target returned HTTP {} for template={} url={} body_bytes={}",
+            status.as_u16(),
+            template.id,
+            resp_url,
+            resp_bytes,
+        );
         error!(session_id = %session_id, %msg);
+        let _ = futures_set_failed(&state, &session_id, &msg);
         return Err((
             StatusCode::BAD_GATEWAY,
             Json(ErrorResponse { error: msg }),

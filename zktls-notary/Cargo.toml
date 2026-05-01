@@ -22,7 +22,7 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # HTTP client for fetching target servers
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies"], default-features = false }
 
 # Cryptography — Ed25519 signatures
 ed25519-dalek = { version = "2", features = ["rand_core"] }
@@ -51,6 +51,9 @@ uuid = { version = "1", features = ["v4"] }
 
 # Hex encoding for public keys
 hex = "0.4"
+
+# Template loading from TOML config files
+toml = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

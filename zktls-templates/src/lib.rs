@@ -75,6 +75,32 @@ pub struct TargetServer {
 
     /// Expected response content type.
     pub expected_content_type: String,
+
+    /// Optional CSRF configuration. When present, the notary will first
+    /// fetch the CSRF URL to acquire a token, then include it in the
+    /// actual request. This is generic — works for Spring Security
+    /// (X-XSRF-TOKEN), Django (_csrftoken), Rails, etc.
+    #[serde(default)]
+    pub csrf: Option<CsrfConfig>,
+
+    /// Optional Referer header to send with the request. Some gov portals
+    /// validate this.
+    #[serde(default)]
+    pub referer_path: Option<String>,
+}
+
+/// CSRF token acquisition configuration — allows each state template to
+/// declare how to obtain and send CSRF tokens without hardcoding.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsrfConfig {
+    /// URL path to fetch first (GET) to obtain the CSRF token cookie.
+    pub fetch_path: String,
+
+    /// Cookie name that contains the CSRF token (e.g., "XSRF-TOKEN").
+    pub cookie_name: String,
+
+    /// Header name to send the CSRF token back in (e.g., "X-XSRF-TOKEN").
+    pub header_name: String,
 }
 
 /// HTTP methods supported by templates.
@@ -169,6 +195,8 @@ mod tests {
                 path: "/api/search".to_string(),
                 method: HttpMethod::Get,
                 expected_content_type: "application/json".to_string(),
+                csrf: None,
+                referer_path: None,
             },
             fields: vec![
                 FieldDefinition {
@@ -236,5 +264,59 @@ mod tests {
         assert_eq!(HttpMethod::Get, HttpMethod::Get);
         assert_eq!(HttpMethod::Post, HttpMethod::Post);
         assert_ne!(HttpMethod::Get, HttpMethod::Post);
+    }
+
+    #[test]
+    fn csrf_config_serializes() {
+        let csrf = CsrfConfig {
+            fetch_path: "/login".to_string(),
+            cookie_name: "_csrf".to_string(),
+            header_name: "X-CSRF-Token".to_string(),
+        };
+        let json = serde_json::to_string(&csrf).unwrap();
+        let decoded: CsrfConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.cookie_name, "_csrf");
+        assert_eq!(decoded.header_name, "X-CSRF-Token");
+    }
+
+    #[test]
+    fn template_without_csrf_deserializes() {
+        let json = r#"{"hostname":"example.com","path":"/api","method":"Get","expected_content_type":"application/json"}"#;
+        let target: TargetServer = serde_json::from_str(json).unwrap();
+        assert!(target.csrf.is_none());
+        assert!(target.referer_path.is_none());
+    }
+
+    #[test]
+    fn template_with_csrf_roundtrip() {
+        let mut tpl = sample_template();
+        tpl.target.csrf = Some(CsrfConfig {
+            fetch_path: "/page".to_string(),
+            cookie_name: "XSRF-TOKEN".to_string(),
+            header_name: "X-XSRF-TOKEN".to_string(),
+        });
+        tpl.target.referer_path = Some("/page".to_string());
+        let json = serde_json::to_string(&tpl).unwrap();
+        let decoded: VerificationTemplate = serde_json::from_str(&json).unwrap();
+        assert!(decoded.target.csrf.is_some());
+        assert_eq!(decoded.target.csrf.unwrap().cookie_name, "XSRF-TOKEN");
+        assert_eq!(decoded.target.referer_path.unwrap(), "/page");
+    }
+
+    #[test]
+    fn multi_state_registry() {
+        let mut registry = TemplateRegistry::new();
+        registry.register(sample_template());
+        // Simulate a second state template
+        let mut ca = sample_template();
+        ca.id = "california-voter-v1".to_string();
+        ca.name = "California Voter Registration".to_string();
+        ca.target.hostname = "voterstatus.sos.ca.gov".to_string();
+        registry.register(ca);
+
+        assert_eq!(registry.list_ids().len(), 2);
+        assert!(registry.get("utah-voter-v1").is_some());
+        assert!(registry.get("california-voter-v1").is_some());
+        assert!(registry.get("texas-voter-v1").is_none());
     }
 }
