@@ -1,6 +1,6 @@
 # plausiden-zktls
 
-[![CI](https://github.com/PlausiDen/plausiden-zktls/actions/workflows/ci.yml/badge.svg)](https://github.com/PlausiDen/plausiden-zktls/actions/workflows/ci.yml)
+[![CI](https://github.com/thepictishbeast/plausiden-zktls/actions/workflows/ci.yml/badge.svg)](https://github.com/thepictishbeast/plausiden-zktls/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Prove who you are without revealing who you are. plausiden-zktls is a general-purpose toolkit that lets applications verify real-world identity claims -- like voter registration, age, professional credentials, or academic records -- using cryptographic proofs from TLS sessions, without exposing any personal data to the verifier. It turns the trust model of identity verification inside out: instead of handing your information to a central authority and hoping they protect it, you prove your claim mathematically and keep your data to yourself.
@@ -55,7 +55,7 @@ The verifier learns exactly one fact -- the claim is valid -- and nothing more.
 
 ```bash
 # Clone the repository
-git clone https://github.com/PlausiDen/plausiden-zktls.git
+git clone https://github.com/thepictishbeast/plausiden-zktls.git
 cd plausiden-zktls
 
 # Build the workspace
@@ -87,7 +87,7 @@ plausiden-zktls is a standalone general-purpose library in the [PlausiDen](https
 Related repositories:
 - [sacredvote-zktls](https://github.com/thepictishbeast/sacredvote-zktls) -- Sacred.Vote voter verification integration
 - [Sacred.Vote](https://github.com/thepictishbeast/Sacred.Vote) -- The voting platform
-- [plausiden-crdt](https://github.com/PlausiDen/plausiden-crdt) -- Conflict-free replicated data types
+- [plausiden-crdt](https://github.com/thepictishbeast/plausiden-crdt) -- Conflict-free replicated data types
 
 ## License
 

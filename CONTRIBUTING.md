@@ -13,7 +13,7 @@ Thank you for your interest in contributing to plausiden-zktls. This toolkit is 
 ### Getting Started
 
 ```bash
-git clone https://github.com/PlausiDen/plausiden-zktls.git
+git clone https://github.com/thepictishbeast/plausiden-zktls.git
 cd plausiden-zktls
 
 # Build everything
