@@ -82,11 +82,11 @@ plausiden-zktls/
 
 ## The PlausiDen Ecosystem
 
-plausiden-zktls is a standalone general-purpose library in the [PlausiDen](https://github.com/PlausiDen) ecosystem. It is used by [sacredvote-zktls](https://github.com/PlausiDen/sacredvote-zktls) to power voter registration verification on the [Sacred.Vote](https://sacred.vote) civic technology platform, but the toolkit itself is application-agnostic. Any project that needs to verify real-world identity claims without centralized data collection can use it: age verification, professional licensing, academic credentials, and more.
+plausiden-zktls is a standalone general-purpose library in the [PlausiDen](https://github.com/PlausiDen) ecosystem. It is used by [sacredvote-zktls](https://github.com/thepictishbeast/sacredvote-zktls) to power voter registration verification on the [Sacred.Vote](https://sacred.vote) civic technology platform, but the toolkit itself is application-agnostic. Any project that needs to verify real-world identity claims without centralized data collection can use it: age verification, professional licensing, academic credentials, and more.
 
 Related repositories:
-- [sacredvote-zktls](https://github.com/PlausiDen/sacredvote-zktls) -- Sacred.Vote voter verification integration
-- [Sacred.Vote](https://github.com/PlausiDen/Sacred.Vote) -- The voting platform
+- [sacredvote-zktls](https://github.com/thepictishbeast/sacredvote-zktls) -- Sacred.Vote voter verification integration
+- [Sacred.Vote](https://github.com/thepictishbeast/Sacred.Vote) -- The voting platform
 - [plausiden-crdt](https://github.com/PlausiDen/plausiden-crdt) -- Conflict-free replicated data types
 
 ## License
