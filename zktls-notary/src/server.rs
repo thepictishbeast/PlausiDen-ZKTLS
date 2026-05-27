@@ -528,6 +528,48 @@ async fn notarize(
         ));
     }
 
+    // LOOP-V3.1#451 — Utah validation-failure / not-found shape.
+    //
+    // When the request shape is correct but the voter fields don't
+    // match Utah's records, Utah responds with HTTP 200 and a body
+    // shape where `voter`, `residence`, and `voterId` are all set to
+    // JSON null while a non-null `errorMessage` describes the failure.
+    // The keys ARE present (so `contains_key("voter")` is true) — we
+    // must inspect the VALUE for null.
+    //
+    // Detect this shape and emit `voter_not_found:` so the caller
+    // surfaces the same "no matching record" UI as the empty-object
+    // case. The errorMessage value is logged (max 120 chars) for
+    // operator diagnosis — Utah's messages are generic ("Voter not
+    // found at this address. Contact your election official.") and
+    // do NOT leak voter PII.
+    let voter_is_null = matches!(
+        &pre_extract_parse,
+        Some(serde_json::Value::Object(map)) if map.get("voter") == Some(&serde_json::Value::Null)
+    );
+    if voter_is_null {
+        let error_message_str = pre_extract_parse
+            .as_ref()
+            .and_then(|v| v.as_object())
+            .and_then(|m| m.get("errorMessage"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.chars().take(120).collect::<String>())
+            .unwrap_or_default();
+        tracing::info!(
+            session_id = %session_id,
+            body_len = response_body.len(),
+            template = %template.id,
+            error_message = %error_message_str,
+            "voter not found — upstream returned voter:null (validation/match failed)"
+        );
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ErrorResponse {
+                error: "voter_not_found: upstream returned voter:null (no matching registration record)".to_string(),
+            }),
+        ));
+    }
+
     let (disclosed_fields, redacted_hashes) =
         extract_fields(&response_body, &template.fields, &disclosure).map_err(|e| {
             let msg = e.to_string();
