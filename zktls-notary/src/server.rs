@@ -69,11 +69,7 @@ pub struct NotaryServer {
 
 impl NotaryServer {
     /// Create a new notary server.
-    pub fn new(
-        config: NotaryConfig,
-        keypair: NotaryKeyPair,
-        templates: TemplateRegistry,
-    ) -> Self {
+    pub fn new(config: NotaryConfig, keypair: NotaryKeyPair, templates: TemplateRegistry) -> Self {
         // Build HTTP client with browser-like TLS fingerprint.
         // Cookie store enabled for CSRF token flows (Utah requires XSRF-TOKEN cookie).
         // User-Agent rotated per-request in the handler, not set here.
@@ -229,9 +225,7 @@ async fn notarize(
 
     // Check hostname allowlist
     if !state.allowed_hostnames.is_empty()
-        && !state
-            .allowed_hostnames
-            .contains(&template.target.hostname)
+        && !state.allowed_hostnames.contains(&template.target.hostname)
     {
         return Err((
             StatusCode::FORBIDDEN,
@@ -280,7 +274,7 @@ async fn notarize(
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         session_id.hash(&mut h);
-        (h.finish() % 4000 + 1000) as u64 // 1000-5000ms
+        h.finish() % 4000 + 1000 // 1000-5000ms (Hasher::finish() already returns u64)
     };
     tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
 
@@ -314,7 +308,10 @@ async fn notarize(
         let csrf_res = http_client
             .get(&csrf_url)
             .header("User-Agent", ua)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
             .header("Accept-Language", "en-US,en;q=0.9")
             .header("Accept-Encoding", "gzip, deflate, br")
             .header("DNT", "1")
@@ -335,15 +332,10 @@ async fn notarize(
                 for cookie_str in csrf_response.headers().get_all("set-cookie") {
                     if let Ok(val) = cookie_str.to_str() {
                         if val.starts_with(&cookie_prefix) {
-                            let token = val[cookie_prefix.len()..]
-                                .split(';')
-                                .next()
-                                .unwrap_or("");
+                            let token = val[cookie_prefix.len()..].split(';').next().unwrap_or("");
                             if !token.is_empty() {
-                                csrf_token = Some((
-                                    csrf_cfg.header_name.clone(),
-                                    token.to_string(),
-                                ));
+                                csrf_token =
+                                    Some((csrf_cfg.header_name.clone(), token.to_string()));
                             }
                         }
                     }
@@ -393,9 +385,25 @@ async fn notarize(
 
             // Derive sec-ch-ua from selected UA to keep headers consistent
             let (ch_ua, ch_platform) = if ua.contains("Chrome/131") {
-                ("\"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\", \"Google Chrome\";v=\"131\"", if ua.contains("Windows") { "\"Windows\"" } else if ua.contains("Macintosh") { "\"macOS\"" } else { "\"Linux\"" })
+                (
+                    "\"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\", \"Google Chrome\";v=\"131\"",
+                    if ua.contains("Windows") {
+                        "\"Windows\""
+                    } else if ua.contains("Macintosh") {
+                        "\"macOS\""
+                    } else {
+                        "\"Linux\""
+                    },
+                )
             } else if ua.contains("Firefox") {
-                ("\"Firefox\";v=\"133\"", if ua.contains("Windows") { "\"Windows\"" } else { "\"Linux\"" })
+                (
+                    "\"Firefox\";v=\"133\"",
+                    if ua.contains("Windows") {
+                        "\"Windows\""
+                    } else {
+                        "\"Linux\""
+                    },
+                )
             } else {
                 ("\"Safari\";v=\"18\"", "\"macOS\"")
             };
@@ -407,10 +415,7 @@ async fn notarize(
                 .header("Accept", "application/json, text/plain, */*")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .header("Accept-Encoding", "gzip, deflate, br")
-                .header(
-                    "Origin",
-                    format!("https://{}", template.target.hostname),
-                )
+                .header("Origin", format!("https://{}", template.target.hostname))
                 .header("Referer", referer)
                 .header("DNT", "1")
                 .header("Connection", "keep-alive")
@@ -436,10 +441,7 @@ async fn notarize(
         let msg = format!("fetch failed: {e}");
         error!(session_id = %session_id, %msg);
         let _ = futures_set_failed(&state, &session_id, &msg);
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse { error: msg }),
-        )
+        (StatusCode::BAD_GATEWAY, Json(ErrorResponse { error: msg }))
     })?;
 
     let status = response.status();
@@ -457,25 +459,18 @@ async fn notarize(
         );
         error!(session_id = %session_id, %msg);
         let _ = futures_set_failed(&state, &session_id, &msg);
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse { error: msg }),
-        ));
+        return Err((StatusCode::BAD_GATEWAY, Json(ErrorResponse { error: msg })));
     }
 
     let response_body = response.text().await.map_err(|e| {
         let msg = format!("failed to read response body: {e}");
-        (
-            StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse { error: msg }),
-        )
+        (StatusCode::BAD_GATEWAY, Json(ErrorResponse { error: msg }))
     })?;
 
     // Compute a certificate hash (in trusted-fetch mode, we hash the hostname as a stand-in;
     // full MPC-TLS would extract the actual certificate chain)
-    let cert_hash = zktls_core::sha512_hash(
-        format!("tls-cert:{}", template.target.hostname).as_bytes(),
-    );
+    let cert_hash =
+        zktls_core::sha512_hash(format!("tls-cert:{}", template.target.hostname).as_bytes());
 
     // Store response
     state
@@ -491,12 +486,77 @@ async fn notarize(
         .await
         .ok();
 
-    let disclosure = req.disclosure.unwrap_or(template.default_disclosure.clone());
+    let disclosure = req
+        .disclosure
+        .unwrap_or(template.default_disclosure.clone());
+
+    // LOOP-V3.1#450 — empty-object → stable "voter_not_found" error.
+    //
+    // Empirical: every notarize attempt against votesearch.utah.gov from
+    // 2026-05-18 through 2026-05-26 returned body `{}` (2 bytes, JSON
+    // object with zero keys). Both synthetic ("John Doe") and real-name
+    // probes return identical shape. This is Utah's "voter not found"
+    // response shape — they reuse a 200 status with an empty body
+    // rather than returning a structured `{errorMessage: ...}`.
+    //
+    // Before this change the empty-object case fell into extract_fields
+    // → "required field not found at path 'voter.status'" → 422 with a
+    // schema-leaking error string. The caller (sacred.vote) couldn't
+    // distinguish "voter not found" from "notary's extractor broke" so
+    // it showed the same generic failure copy for both.
+    //
+    // We keep the 422 status (still an extraction failure from the
+    // notary's POV) but emit a STABLE machine-readable error prefix
+    // `voter_not_found:` that sacred.vote can detect to render a
+    // semantic "we didn't find a match" UI instead of the generic
+    // pipeline-broke copy.
+    let pre_extract_parse: Option<serde_json::Value> = serde_json::from_str(&response_body).ok();
+    let is_empty_object = matches!(&pre_extract_parse, Some(serde_json::Value::Object(map)) if map.is_empty());
+    if is_empty_object {
+        let body_len = response_body.len();
+        tracing::info!(
+            session_id = %session_id,
+            body_len,
+            template = %template.id,
+            "voter not found — upstream returned empty object (no PII)"
+        );
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ErrorResponse {
+                error: "voter_not_found: upstream returned empty response (no matching registration record)".to_string(),
+            }),
+        ));
+    }
 
     let (disclosed_fields, redacted_hashes) =
         extract_fields(&response_body, &template.fields, &disclosure).map_err(|e| {
             let msg = e.to_string();
-            error!(session_id = %session_id, %msg);
+            // Diagnostic: when extraction fails on a NON-empty response,
+            // surface the SHAPE so an operator can see why. We log:
+            //   - response body length
+            //   - top-level JSON keys (NOT values — PII may live in values)
+            //   - whether the body parsed as JSON at all
+            // No PII enters journald: only the structural skeleton.
+            let body_len = response_body.len();
+            let (parsed_ok, top_keys) = match pre_extract_parse {
+                Some(serde_json::Value::Object(map)) => {
+                    let mut keys: Vec<String> = map.keys().take(20).cloned().collect();
+                    keys.sort();
+                    (true, keys.join(","))
+                }
+                Some(serde_json::Value::Array(_)) => (true, "[array]".to_string()),
+                Some(_) => (true, "[primitive]".to_string()),
+                None => (false, String::new()),
+            };
+            error!(
+                session_id = %session_id,
+                body_len,
+                parsed_ok,
+                top_keys = %top_keys,
+                template = %template.id,
+                msg = %msg,
+                "field extraction failed — logging response shape (no PII)"
+            );
             (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 Json(ErrorResponse { error: msg }),
